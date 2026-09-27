@@ -1,0 +1,229 @@
+package com.dodaso.ecosystem.user.auth.sso.config;
+
+import com.dodaso.ecosystem.user.auth.sso.handler.OAuth2AuthenticationSuccessHandler;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import com.nimbusds.jose.jwk.source.JWKSource;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.MediaType;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
+import org.springframework.security.oauth2.core.oidc.OidcScopes;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
+import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
+import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
+import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
+import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
+import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+@Configuration
+@RequiredArgsConstructor
+@Slf4j
+public class AuthServerConfig {
+
+  private final OAuth2AuthenticationSuccessHandler authenticationSuccessHandler;
+
+  @Bean
+  @Order(1)
+  public SecurityFilterChain authorizationServerFilterChain(HttpSecurity httpSecurity)
+      throws Exception {
+    // Use the newer approach instead of applyDefaultSecurity()
+    httpSecurity
+        .securityMatcher("/oauth2/**", "/.well-known/openid-configuration", "/userinfo")
+        .authorizeHttpRequests(authorize -> authorize
+            .anyRequest().authenticated()
+        )
+        .csrf(csrf -> csrf.ignoringRequestMatchers("/oauth2/**", "/login",
+            "/.well-known/openid_configuration", "/jwks", "/userinfo"))
+        .with(new OAuth2AuthorizationServerConfigurer(), authzServer ->
+            authzServer.oidc(Customizer.withDefaults())
+        )
+        .oauth2ResourceServer(resourceServer -> resourceServer
+            .jwt(Customizer.withDefaults())
+        );
+
+    // Explicitly force redirect to /login when unauthorized or session expired
+    httpSecurity.exceptionHandling(exceptions -> exceptions
+        .defaultAuthenticationEntryPointFor(
+            new LoginUrlAuthenticationEntryPoint("/login"),
+            //new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
+            new MediaTypeRequestMatcher(MediaType.ALL)
+        )
+    );
+
+    return httpSecurity.build();
+  }
+
+  @Bean
+  @Order(2)
+  public SecurityFilterChain appFilterChain(HttpSecurity httpSecurity) throws Exception {
+    httpSecurity
+        .csrf(AbstractHttpConfigurer::disable)
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        .authorizeHttpRequests(registry -> registry
+            .requestMatchers("/login").permitAll()
+            .requestMatchers("/*.css").permitAll()       // Root-level CSS
+            .requestMatchers("/*.ico").permitAll()       // Root-level ICO
+            .requestMatchers("/js/**").permitAll()       // All files under /js/
+            .requestMatchers("/error").permitAll()       // Error path
+            .requestMatchers("/css/**").permitAll()      // All CSS files under /css/
+            .anyRequest().authenticated()
+        )
+        .formLogin(form -> form
+            .loginPage("/login")
+            .loginProcessingUrl("/login")
+            //.successHandler(authenticationSuccessHandler) // Custom success handler
+            //.failureHandler(createAuthenticationFailureHandler())
+            .permitAll()
+        ).logout(l -> l
+            .logoutUrl("/logout")
+            .logoutSuccessUrl("https://localhost:443/") // send user back to the web app
+            .invalidateHttpSession(true)
+            .deleteCookies("SSOSESSIONID")  // use the SSO cookie name you set
+        );
+
+    return httpSecurity.build();
+  }
+
+  // Fix #3: Automatic Retry Logic for Expired Authorization Requests
+  private AuthenticationFailureHandler createAuthenticationFailureHandler() {
+    return (request, response, exception) -> {
+      if (exception.getMessage().contains("authorization_request_not_found") ||
+          (exception.getCause() != null &&
+              exception.getCause().getMessage().contains("authorization_request_not_found"))) {
+        response.sendRedirect("/login?error=authorization_request_expired");
+      } else {
+        response.sendRedirect("/login?error=true");
+      }
+    };
+  }
+
+  @Bean
+  public RegisteredClientRepository registeredClientRepository() {
+    RegisteredClient jsfClient = RegisteredClient.withId(UUID.randomUUID().toString())
+        .clientId("jsf-primefaces-client")
+        .clientSecret(passwordEncoder().encode("jsf-client-secret"))
+        .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+        .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
+        //.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+        //.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+        .authorizationGrantTypes(grantTypes -> {
+          grantTypes.add(AuthorizationGrantType.AUTHORIZATION_CODE);
+          grantTypes.add(AuthorizationGrantType.REFRESH_TOKEN);
+        })
+        .redirectUri("https://localhost:443/login/oauth2/code/sso")
+        .redirectUri("https://localhost:443/elcm/login/oauth2/code/sso")
+        .redirectUri("https://localhost/elcm/login/oauth2/code/sso")
+        .redirectUri("https://localhost:443/ecws/login/oauth2/code/sso")
+        .redirectUri("https://localhost/ecws/login/oauth2/code/sso")
+        //.redirectUri("https://localhost/login/oauth2/code/sso")
+        //.redirectUri("https://localhost:443/oauth2/callback")
+        //.redirectUri("https://localhost/oauth2/callback")
+        //.postLogoutRedirectUri("https://localhost:443/logout")
+        //.postLogoutRedirectUri("https://localhost/logout")
+        .scope(OidcScopes.OPENID)
+        .scope(OidcScopes.PROFILE)
+        .scope(OidcScopes.EMAIL)
+        .scope("read")
+        .scope("write")
+        .clientSettings(ClientSettings.builder()
+            .requireAuthorizationConsent(false)
+            .requireProofKey(false)
+            .build())
+        .tokenSettings(TokenSettings.builder()
+            // Keep access token slightly longer than session to allow for refresh
+            //.accessTokenTimeToLive(Duration.ofMinutes(35))
+            // Refresh token should be longer for better UX
+            //.refreshTokenTimeToLive(Duration.ofHours(8))
+            .accessTokenTimeToLive(Duration.ofMinutes(30))
+            .refreshTokenTimeToLive(Duration.ofHours(30))
+            .authorizationCodeTimeToLive(Duration.ofMinutes(5))
+            .reuseRefreshTokens(false)
+            .build())
+        .build();
+
+    return new InMemoryRegisteredClientRepository(jsfClient);
+  }
+
+  @Bean
+  public AuthorizationServerSettings authorizationServerSettings() {
+    return AuthorizationServerSettings.builder()
+        .issuer("https://localhost:8081")
+        .build();
+  }
+
+  @Bean
+  public PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder(); // Use BCrypt instead of NoOp
+  }
+
+  @Bean
+  public JwtDecoder jwtDecoder(JWKSource<com.nimbusds.jose.proc.SecurityContext> jwkSource) {
+    return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
+  }
+
+  @Bean
+  public JWKSource<com.nimbusds.jose.proc.SecurityContext> jwkSource() {
+    KeyPair keyPair = generateRsaKey();
+    RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
+    RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
+    RSAKey rsaKey = new RSAKey.Builder(publicKey)
+        .privateKey(privateKey)
+        .keyID(UUID.randomUUID().toString())
+        .build();
+    JWKSet jwkSet = new JWKSet(rsaKey);
+    return new ImmutableJWKSet<>(jwkSet);
+  }
+
+  private static KeyPair generateRsaKey() {
+    KeyPair keyPair;
+    try {
+      KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+      keyPairGenerator.initialize(2048);
+      keyPair = keyPairGenerator.generateKeyPair();
+    } catch (Exception ex) {
+      throw new IllegalStateException(ex);
+    }
+    return keyPair;
+  }
+
+  @Bean
+  public CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration configuration = new CorsConfiguration();
+    configuration.setAllowedOrigins(List.of("https://localhost:443")); // your frontend origin
+    configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    configuration.setAllowedHeaders(List.of("*"));
+    configuration.setAllowCredentials(true);
+
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", configuration);
+    return source;
+  }
+}
