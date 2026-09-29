@@ -5,85 +5,44 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.4.2</version>
+		<version>3.5.16</version> <!-- STEP1: was 3.4.2; aligned with every other dodaso module -->
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.dodaso.ecosystem.iams.sso</groupId>
 	<artifactId>iams-sso</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
+	<version>${revision}</version> <!-- STEP1: was hard-coded 1.0.0-SNAPSHOT -->
 	<name>sso</name>
 	<description>Authentication and Authorization for Spring Boot</description>
-	<url/>
-	<licenses>
-		<license/>
-	</licenses>
-	<developers>
-		<developer/>
-	</developers>
-	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
-	</scm>
+
 	<properties>
 		<java.version>21</java.version>
 		<revision>1.0.0-SNAPSHOT</revision>
 		<maven.build.timestamp.format>yyyyMMdd</maven.build.timestamp.format>
+		<spring-cloud-azure.version>6.5.0</spring-cloud-azure.version> <!-- STEP1: Spring Cloud Azure line for Boot 3.5.x -->
 	</properties>
 
-	<profiles>
-		<profile>
-			<activation>
-				<activeByDefault>true</activeByDefault>
-			</activation>
-			<id>local</id>
-			<properties>
-				<activatedProperties>local</activatedProperties>
-			</properties>
-		</profile>
-		<profile>
-			<id>adev</id>
-			<properties>
-				<activatedProperties>adev</activatedProperties>
-			</properties>
-		</profile>
-		<profile>
-			<id>bdev</id>
-			<properties>
-				<activatedProperties>bdev</activatedProperties>
-			</properties>
-		</profile>
-		<profile>
-			<id>dit</id>
-			<properties>
-				<activatedProperties>dit</activatedProperties>
-			</properties>
-		</profile>
-		<profile>
-			<id>sit</id>
-			<properties>
-				<activatedProperties>sit</activatedProperties>
-			</properties>
-		</profile>
-		<profile>
-			<id>uat</id>
-			<properties>
-				<activatedProperties>uat</activatedProperties>
-			</properties>
-		</profile>
-		<profile>
-			<id>prod</id>
-			<properties>
-				<activatedProperties>prod</activatedProperties>
-			</properties>
-		</profile>
-	</profiles>
+	<!-- STEP1: removed the <profiles> block (local/adev/bdev/dit/sit/uat/prod). The runtime
+	     profile is chosen at run time: -Dspring.profiles.active=local locally (see
+	     prepareForDev.bat), SPRING_PROFILES_ACTIVE=cloud in customer instances. -->
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- STEP1: Spring Cloud Azure BOM; also manages com.azure:* SDK versions -->
+			<dependency>
+				<groupId>com.azure.spring</groupId>
+				<artifactId>spring-cloud-azure-dependencies</artifactId>
+				<version>${spring-cloud-azure.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<dependencies>
+		<!-- STEP1: duplicate spring-boot-starter-web and spring-boot-starter-data-jpa entries removed -->
 		<dependency>
-			<artifactId>spring-boot-starter-web</artifactId>
 			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -99,11 +58,22 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
 		</dependency>
+		<!-- STEP1: health/info endpoints for container probes (Step 6) and version checks -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<!-- STEP1: @Validated on DodasoInstanceProperties / SsoProperties (fail fast) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+		<!-- STEP1: Key Vault as a Spring PropertySource (client secret, JWT secret) -->
+		<dependency>
+			<groupId>com.azure.spring</groupId>
+			<artifactId>spring-cloud-azure-starter-keyvault-secrets</artifactId>
 		</dependency>
 		<!-- For HTTP client -->
 		<dependency>
@@ -111,16 +81,12 @@
 			<artifactId>httpclient</artifactId>
 			<version>4.5.14</version>
 		</dependency>
-		<!-- For Lombok (if not already present) -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
 		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-jpa</artifactId>
-		</dependency>
+		<!-- H2 in-memory store for authorizations. Replaced by MySQL in Step 2. -->
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
@@ -151,36 +117,35 @@
 	<build>
 		<finalName>sso-${project.version}-${maven.build.timestamp}</finalName>
 
+		<!-- STEP1: resources replaced. Mirrors spring-boot-starter-parent's default
+		     (filter only application*.yml/yaml/properties with @..@ tokens, copy everything
+		     else untouched). **/*.p12 is excluded so a keystore can never be packaged. -->
+		<resources>
+			<resource>
+				<directory>${basedir}/src/main/resources</directory>
+				<filtering>true</filtering>
+				<includes>
+					<include>**/application*.yml</include>
+					<include>**/application*.yaml</include>
+					<include>**/application*.properties</include>
+				</includes>
+			</resource>
+			<resource>
+				<directory>${basedir}/src/main/resources</directory>
+				<filtering>false</filtering>
+				<excludes>
+					<exclude>**/application*.yml</exclude>
+					<exclude>**/application*.yaml</exclude>
+					<exclude>**/application*.properties</exclude>
+					<exclude>**/*.p12</exclude>
+				</excludes>
+			</resource>
+		</resources>
+
 		<plugins>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-resources-plugin</artifactId>
-				<version>3.3.1</version>
-				<configuration>
-					<useDefaultDelimiters>true</useDefaultDelimiters>
-				</configuration>
-				<executions>
-					<execution>
-						<configuration>
-							<outputDirectory>${basedir}/target/classes</outputDirectory>
-							<resources>
-								<resource>
-									<directory>${basedir}/src/main/resources</directory>
-									<includes>
-										<include>dodaso_keystore.p12</include>
-										<include>dodaso_truststore.p12</include>
-									</includes>
-								</resource>
-							</resources>
-						</configuration>
-						<goals>
-							<goal>copy-resources</goal>
-						</goals>
-						<id>copy-resource-one</id>
-						<phase>generate-sources</phase>
-					</execution>
-				</executions>
-			</plugin>
+			<!-- STEP1: removed maven-resources-plugin. Its copy-resource-one execution packaged the
+			     keystores into the jar, and useDefaultDelimiters=true made Maven replace ${...}
+			     placeholders (e.g. ${user.home}) at BUILD time. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -189,6 +154,13 @@
 						<path>
 							<groupId>org.projectlombok</groupId>
 							<artifactId>lombok</artifactId>
+							<version>${lombok.version}</version>
+						</path>
+						<!-- STEP1: generates metadata for SsoProperties (IDE autocompletion) -->
+						<path>
+							<groupId>org.springframework.boot</groupId>
+							<artifactId>spring-boot-configuration-processor</artifactId>
+							<version>${project.parent.version}</version>
 						</path>
 					</annotationProcessorPaths>
 				</configuration>
@@ -204,6 +176,13 @@
 						</configuration>
 						<goals>
 							<goal>repackage</goal>
+						</goals>
+					</execution>
+					<!-- STEP1: META-INF/build-info.properties -> /actuator/info shows the release version -->
+					<execution>
+						<id>build-info</id>
+						<goals>
+							<goal>build-info</goal>
 						</goals>
 					</execution>
 				</executions>
