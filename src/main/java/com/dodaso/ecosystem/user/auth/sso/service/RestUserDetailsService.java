@@ -1,11 +1,17 @@
 package com.dodaso.ecosystem.user.auth.sso.service;
 
 import com.dodaso.ecosystem.auth.container.UserDTOContainer;
+import com.dodaso.ecosystem.auth.container.UserDirectoryDTOContainer;
 import com.dodaso.ecosystem.auth.dto.UserDTO;
 import com.dodaso.ecosystem.user.auth.sso.client.IAMSRestClient;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -33,10 +39,9 @@ public class RestUserDetailsService implements UserDetailsService {
     }
 
     UserDTO userDTO = userDTOContainer.getUserDTO();
-    // Convert DTO to UserDetails
-    //    List<GrantedAuthority> authorities = userDTOContainer.getRoles().stream()
-    //        .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
-    //        .collect(Collectors.toList());
+    // Roles come from the IAMS directory entry (UserDirectoryDTO.roleNames),
+    // not from UserDTO, which carries no roles.
+    List<GrantedAuthority> authorities = loadAuthorities(userDTO.getLoginId());
 
     // Decode the password hash if it was Base64 encoded for JSON transport
     String passwordHash = userDTO.getPasswordHash();
@@ -44,17 +49,52 @@ public class RestUserDetailsService implements UserDetailsService {
     return User.builder()
         .username(userDTO.getLoginId())
         .password(passwordHash) // Should already be BCrypt encoded from REST API
-        //.authorities(authorities)
+        .authorities(authorities)
         //.accountExpired(!userDto.isAccountNonExpired())
         //.accountLocked(!userDto.isAccountNonLocked())
         //.credentialsExpired(!userDto.isCredentialsNonExpired())
         //.disabled(!userDto.isEnabled())
-        //.authorities(authorities)
         .accountExpired(false)
         .accountLocked(false)
         .credentialsExpired(false)
         .disabled(false)
         .build();
+  }
+
+  /**
+   * Maps the user's IAMS role names to Spring Security authorities, e.g.
+   * "Super Admin" becomes ROLE_SUPER_ADMIN. Fails open: if IAMS has no
+   * directory entry or the call fails, the user logs in with no authorities
+   * instead of being locked out, and AppEntry.requiredAuthority simply hides
+   * any app that needs one.
+   */
+  private List<GrantedAuthority> loadAuthorities(String loginId) {
+    List<GrantedAuthority> authorities = new ArrayList<>();
+    UserDirectoryDTOContainer directory = iamsRestClient.fetchUserDirectory(loginId);
+    if (directory == null || directory.getUserDirectoryDTO() == null
+        || directory.getUserDirectoryDTO().getRoleNames() == null) {
+      log.warn("No IAMS roles found for {}; granting no authorities", loginId);
+      return authorities;
+    }
+    for (String roleName : directory.getUserDirectoryDTO().getRoleNames()) {
+      String authority = toAuthority(roleName);
+      if (authority != null) {
+        authorities.add(new SimpleGrantedAuthority(authority));
+      }
+    }
+    log.debug("Granted authorities for {}: {}", loginId, authorities);
+    return authorities;
+  }
+
+  /** Upper-cases, turns every run of non-alphanumerics into one underscore, and adds ROLE_. */
+  static String toAuthority(String roleName) {
+    if (roleName == null || roleName.isBlank()) {
+      return null;
+    }
+    String normalized = roleName.trim().toUpperCase(Locale.ROOT)
+        .replaceAll("[^A-Z0-9]+", "_")
+        .replaceAll("^_+|_+$", "");
+    return normalized.isEmpty() ? null : "ROLE_" + normalized;
   }
 
   private String decodePasswordHash(String encodedPasswordHash) {
