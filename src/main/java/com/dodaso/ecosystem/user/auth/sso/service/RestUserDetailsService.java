@@ -12,7 +12,6 @@ import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -41,48 +40,42 @@ public class RestUserDetailsService implements UserDetailsService {
     UserDTO userDTO = userDTOContainer.getUserDTO();
     // Roles come from the IAMS directory entry (UserDirectoryDTO.roleNames),
     // not from UserDTO, which carries no roles.
-    List<GrantedAuthority> authorities = loadAuthorities(userDTO.getLoginId());
+    List<String> roleNames = loadRoleNames(userDTO.getLoginId());
+    List<GrantedAuthority> authorities = toAuthorities(roleNames);
 
     // Decode the password hash if it was Base64 encoded for JSON transport
     String passwordHash = userDTO.getPasswordHash();
 
-    return User.builder()
-        .username(userDTO.getLoginId())
-        .password(passwordHash) // Should already be BCrypt encoded from REST API
-        .authorities(authorities)
-        //.accountExpired(!userDto.isAccountNonExpired())
-        //.accountLocked(!userDto.isAccountNonLocked())
-        //.credentialsExpired(!userDto.isCredentialsNonExpired())
-        //.disabled(!userDto.isEnabled())
-        .accountExpired(false)
-        .accountLocked(false)
-        .credentialsExpired(false)
-        .disabled(false)
-        .build();
+    // Keeps the original role names next to the authorities; the token customizer
+    // publishes them as the "roles" claim.
+    return new SsoUserDetails(userDTO.getLoginId(), passwordHash, authorities, roleNames);
   }
 
   /**
-   * Maps the user's IAMS role names to Spring Security authorities, e.g.
-   * "Super Admin" becomes ROLE_SUPER_ADMIN. Fails open: if IAMS has no
-   * directory entry or the call fails, the user logs in with no authorities
-   * instead of being locked out, and AppEntry.requiredAuthority simply hides
-   * any app that needs one.
+   * The user's IAMS role names as stored. Fails open: if IAMS has no directory
+   * entry or the call fails, the user logs in with no roles instead of being
+   * locked out, and AppEntry.requiredAuthority simply hides any app that needs one.
    */
-  private List<GrantedAuthority> loadAuthorities(String loginId) {
-    List<GrantedAuthority> authorities = new ArrayList<>();
+  private List<String> loadRoleNames(String loginId) {
     UserDirectoryDTOContainer directory = iamsRestClient.fetchUserDirectory(loginId);
     if (directory == null || directory.getUserDirectoryDTO() == null
         || directory.getUserDirectoryDTO().getRoleNames() == null) {
       log.warn("No IAMS roles found for {}; granting no authorities", loginId);
-      return authorities;
+      return List.of();
     }
-    for (String roleName : directory.getUserDirectoryDTO().getRoleNames()) {
+    return List.copyOf(directory.getUserDirectoryDTO().getRoleNames());
+  }
+
+  /** Maps role names to Spring Security authorities, e.g. "Super Admin" becomes ROLE_SUPER_ADMIN. */
+  private List<GrantedAuthority> toAuthorities(List<String> roleNames) {
+    List<GrantedAuthority> authorities = new ArrayList<>();
+    for (String roleName : roleNames) {
       String authority = toAuthority(roleName);
       if (authority != null) {
         authorities.add(new SimpleGrantedAuthority(authority));
       }
     }
-    log.debug("Granted authorities for {}: {}", loginId, authorities);
+    log.debug("Granted authorities: {}", authorities);
     return authorities;
   }
 
