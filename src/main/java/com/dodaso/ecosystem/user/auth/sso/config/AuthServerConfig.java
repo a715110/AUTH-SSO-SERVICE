@@ -7,10 +7,6 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import java.net.URI;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -249,30 +245,15 @@ public class AuthServerConfig {
     return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
   }
 
-  /** STEP 2: replace with a key loaded from Key Vault (authserver-jwk-private-key). */
+  /**
+   * Signing key. Persistent across restarts: from Key Vault in the cloud (jwk-private-key) or a
+   * local PEM file in development (jwk-key-file). See {@link JwkKeyProvider}.
+   */
   @Bean
   public JWKSource<com.nimbusds.jose.proc.SecurityContext> jwkSource() {
-    KeyPair keyPair = generateRsaKey();
-    RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
-    RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
-    RSAKey rsaKey = new RSAKey.Builder(publicKey)
-        .privateKey(privateKey)
-        .keyID(UUID.randomUUID().toString())
-        .build();
-    JWKSet jwkSet = new JWKSet(rsaKey);
-    return new ImmutableJWKSet<>(jwkSet);
-  }
-
-  private static KeyPair generateRsaKey() {
-    KeyPair keyPair;
-    try {
-      KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-      keyPairGenerator.initialize(2048);
-      keyPair = keyPairGenerator.generateKeyPair();
-    } catch (Exception ex) {
-      throw new IllegalStateException(ex);
-    }
-    return keyPair;
+    RSAKey rsaKey = JwkKeyProvider.resolve(sso.jwkPrivateKey(), sso.jwkKeyFile());
+    log.info("Authorization server signing key loaded, kid={}", rsaKey.getKeyID());
+    return new ImmutableJWKSet<>(new JWKSet(rsaKey));
   }
 
   @Bean

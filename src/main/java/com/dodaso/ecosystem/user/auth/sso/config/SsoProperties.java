@@ -47,6 +47,14 @@ public record SsoProperties(
 
         /** Extra CORS origins, in addition to the origins of the ECWS and ELCM base URLs. */
         @DefaultValue({})
-        List<String> extraCorsOrigins
+        List<String> extraCorsOrigins,
+
+        /** Signing key, PKCS8 PEM. From Key Vault secret authserver-jwk-private-key in the cloud. */
+        @DefaultValue("")
+        String jwkPrivateKey,
+
+        /** Local development only: PEM file that is loaded, or generated and saved when missing. */
+        @DefaultValue("")
+        String jwkKeyFile
 ) {
 }
