@@ -1,180 +1,335 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DoDesk AI Applications</title>
   <style>
-    /* REVISED 2026-10-18: calmer, more professional launcher. Same gradient family and card
-       corner as the login page, with the DoDesk AI logo, real application icons, and a
-       light or dark card that follows the system setting. */
+    /* REVISED 2026-11-11: portal style launcher. White top bar with the DoDesk AI logo and a
+       user menu, a heading, a search box and a grid of application tiles. Always a light page,
+       like a company portal, whatever the system setting. The tile data still comes from
+       dodaso.apps in application.properties. */
     * {
       box-sizing: border-box;
     }
 
+    :root {
+      --page: #ffffff;
+      --bar: #ffffff;
+      --card: #ffffff;
+      --line: #e3e8ee;
+      --text: #24364a;
+      --muted: #5b6b7d;
+      --accent: #166534;
+      --focus: #4f46e5;
+      --shadow: 0 8px 20px rgba(36, 54, 74, 0.14);
+      color-scheme: light;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 55%, #8e6bbf 100%);
       margin: 0;
-      padding: 24px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
       min-height: 100vh;
-      color: #24364a;
+      background: var(--page);
+      color: var(--text);
     }
 
-    .launcher-container {
-      background: #ffffff;
-      padding: 2.5rem 2.5rem 2rem;
-      border-radius: 24px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      box-shadow: 0 32px 64px rgba(20, 20, 60, 0.28);
-      width: 100%;
-      max-width: 640px;
-      animation: rise 0.5s ease-out;
-    }
-
-    @keyframes rise {
-      from { opacity: 0; transform: translateY(16px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .launcher-header {
-      text-align: center;
-      padding-bottom: 1.5rem;
-      margin-bottom: 1.75rem;
-      border-bottom: 1px solid #e3e8ee;
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+      padding: 0 24px;
+      background: var(--bar);
+      border-bottom: 1px solid var(--line);
     }
 
     .brand img {
       display: block;
-      margin: 0 auto 1.25rem;
-      height: 52px;
+      height: 40px;
       width: auto;
     }
 
-    .launcher-header h1 {
-      margin: 0 0 0.4rem;
-      font-size: 1.5rem;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      color: #24364a;
+    .user-menu {
+      position: relative;
     }
 
-    .launcher-header p {
-      margin: 0;
-      color: #5b6b7d;
-      font-size: 1rem;
+    .user-menu summary {
+      list-style: none;
+      cursor: pointer;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: 0.02em;
+      color: var(--text);
+      background: var(--card);
+    }
+
+    .user-menu summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .user-menu summary:focus-visible,
+    .search input:focus-visible,
+    .signout:focus-visible,
+    .app-tile:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .user-panel {
+      position: absolute;
+      right: 0;
+      top: 54px;
+      z-index: 10;
+      min-width: 240px;
+      padding: 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .user-panel .name {
+      font-weight: 600;
+    }
+
+    .user-panel .login {
+      margin-top: 0.15rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .user-panel form {
+      margin: 0.9rem 0 0;
+      padding-top: 0.9rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .signout {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .signout:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+    }
+
+    h1 {
+      margin: 0 0 1.25rem;
+      font-size: 1.75rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .search {
+      max-width: 520px;
+      margin-bottom: 2rem;
+    }
+
+    .search input {
+      width: 100%;
+      padding: 0.7rem 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .search input::placeholder {
+      color: var(--muted);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      margin: 0 0 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    .section-head .count {
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: var(--muted);
     }
 
     .app-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
       gap: 1rem;
     }
 
     .app-tile {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 1rem;
-      padding: 1.1rem 1.25rem;
-      border-radius: 16px;
-      border: 1px solid #e3e8ee;
-      background: #f7f9fc;
+      text-align: center;
+      padding: 1.5rem 1rem 1.25rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
       text-decoration: none;
-      color: #24364a;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
     }
 
     .app-tile:hover {
-      border-color: #5b6fd6;
+      border-color: var(--accent);
       transform: translateY(-2px);
-      box-shadow: 0 10px 24px rgba(36, 54, 74, 0.18);
-    }
-
-    .app-tile:focus-visible {
-      outline: 3px solid #4f46e5;
-      outline-offset: 2px;
+      box-shadow: var(--shadow);
     }
 
     .app-tile img {
-      width: 56px;
-      height: 56px;
-      flex: 0 0 auto;
+      width: 72px;
+      height: 72px;
+      margin-bottom: 0.9rem;
     }
 
-    .app-text {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-
-    .app-tile .app-name {
-      font-weight: 700;
+    .app-name {
+      font-weight: 600;
       font-size: 1.05rem;
-      letter-spacing: 0.02em;
     }
 
-    .app-tile .app-desc {
+    .app-desc {
+      margin-top: 0.3rem;
       font-size: 0.82rem;
-      color: #5b6b7d;
       line-height: 1.35;
-      margin-top: 0.15rem;
+      color: var(--muted);
     }
 
     .empty-state {
-      text-align: center;
-      color: #5b6b7d;
-      font-size: 1.05rem;
-      padding: 1.5rem 0;
+      color: var(--muted);
+      padding: 1rem 0;
+    }
+
+    .hidden {
+      display: none;
     }
 
     @media (max-width: 480px) {
-      .launcher-container { padding: 2rem 1.25rem 1.5rem; border-radius: 20px; }
+      .topbar {
+        padding: 0 16px;
+      }
+      main {
+        padding: 28px 16px 40px;
+      }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .launcher-container { animation: none; }
-      .app-tile { transition: none; }
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .launcher-container { background: #1c2733; border-color: rgba(255, 255, 255, 0.12); }
-      body { color: #f1f5f9; }
-      .launcher-header { border-bottom-color: #2d3b4a; }
-      .launcher-header h1 { color: #f1f5f9; }
-      .launcher-header p, .app-tile .app-desc, .empty-state { color: #a5b3c3; }
-      .app-tile { background: #243241; border-color: #34455a; color: #f1f5f9; }
-      .app-tile:hover { border-color: #8fa0f2; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); }
-      .app-tile:focus-visible { outline-color: #a5b4fc; }
+      .app-tile {
+        transition: none;
+      }
     }
   </style>
 </head>
 <body>
-<main class="launcher-container">
-  <div class="launcher-header">
-    <picture class="brand">
-      <source media="(prefers-color-scheme: dark)" th:srcset="@{/images/dodesk-ai-logo-white.svg}">
-      <img th:src="@{/images/dodesk-ai-logo-black.svg}" alt="DoDesk AI">
-    </picture>
-    <h1>Applications</h1>
-    <p>Select an application to continue</p>
+<header class="topbar">
+  <picture class="brand">
+    <img th:src="@{/images/dodesk-ai-logo-black.svg}" alt="DoDesk AI">
+  </picture>
+
+  <details class="user-menu" id="userMenu">
+    <summary th:attr="aria-label='Account menu for ' + ${displayName}">
+      <span th:text="${initials}">PB</span>
+    </summary>
+    <div class="user-panel">
+      <div class="name" th:text="${displayName}">Display Name</div>
+      <div class="login" th:text="${loginId}">login id</div>
+      <form th:action="@{/logout}" method="post">
+        <button type="submit" class="signout">Sign out</button>
+      </form>
+    </div>
+  </details>
+</header>
+
+<main>
+  <h1>Apps</h1>
+
+  <div class="search" th:if="${not #lists.isEmpty(apps)}">
+    <input type="search" id="appSearch" placeholder="Search apps" aria-label="Search apps"
+           autocomplete="off">
   </div>
 
-  <div class="app-grid" th:if="${not #lists.isEmpty(apps)}">
-    <a class="app-tile" th:each="app : ${apps}" th:href="${app.url}">
-      <img th:src="${app.iconUrl}" th:alt="${app.name}"/>
-      <span class="app-text">
+  <div th:if="${not #lists.isEmpty(apps)}">
+    <div class="section-head">
+      <span>My Apps</span>
+      <span class="count" id="appCount" th:text="${#lists.size(apps)}">2</span>
+    </div>
+    <div class="app-grid" id="appGrid">
+      <a class="app-tile" th:each="app : ${apps}" th:href="${app.url}"
+         th:attr="data-search=${app.name + ' ' + app.description}">
+        <img th:src="${app.iconUrl}" th:alt="${app.name}"/>
         <span class="app-name" th:text="${app.name}">App Name</span>
         <span class="app-desc" th:text="${app.description}">Description</span>
-      </span>
-    </a>
+      </a>
+    </div>
+    <p class="empty-state hidden" id="noMatch">No apps match your search.</p>
   </div>
 
   <p class="empty-state" th:if="${#lists.isEmpty(apps)}">
     No applications are currently available for your account.
   </p>
 </main>
+
+<script>
+  (function () {
+    var search = document.getElementById('appSearch');
+    var tiles = document.querySelectorAll('#appGrid .app-tile');
+    var count = document.getElementById('appCount');
+    var noMatch = document.getElementById('noMatch');
+    if (search) {
+      search.addEventListener('input', function () {
+        var needle = search.value.trim().toLowerCase();
+        var shown = 0;
+        tiles.forEach(function (tile) {
+          var hit = needle === '' || tile.getAttribute('data-search').toLowerCase().indexOf(needle) !== -1;
+          tile.classList.toggle('hidden', !hit);
+          if (hit) {
+            shown++;
+          }
+        });
+        count.textContent = shown;
+        noMatch.classList.toggle('hidden', shown !== 0);
+      });
+    }
+    var menu = document.getElementById('userMenu');
+    document.addEventListener('click', function (event) {
+      if (menu.open && !menu.contains(event.target)) {
+        menu.open = false;
+      }
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        menu.open = false;
+      }
+    });
+  })();
+</script>
 </body>
 </html>

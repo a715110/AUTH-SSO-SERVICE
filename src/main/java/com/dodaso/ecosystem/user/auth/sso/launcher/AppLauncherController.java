@@ -1,5 +1,6 @@
 package com.dodaso.ecosystem.user.auth.sso.launcher;
 
+import com.dodaso.ecosystem.user.auth.sso.service.SsoUserDetails;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -50,6 +51,29 @@ public class AppLauncherController {
 
     System.out.println("visibleApps:" + visibleApps);
     model.addAttribute("apps", visibleApps);
+
+    // ADDED 2026-11-11: who is signed in, for the user menu on the page.
+    final String loginId = authentication.getName();
+    String displayName = loginId;
+    if (authentication.getPrincipal() instanceof SsoUserDetails details
+        && details.getDisplayName() != null) {
+      displayName = details.getDisplayName();
+    }
+    model.addAttribute("loginId", loginId);
+    model.addAttribute("displayName", displayName);
+    model.addAttribute("initials", initialsOf(displayName));
     return "apps";
+  }
+
+  /** Up to two letters: the first letters of the first two words, else the first two characters. */
+  static String initialsOf(final String name) {
+    if (name == null || name.isBlank()) {
+      return "?";
+    }
+    final String[] words = name.replace(",", " ").trim().split("\\s+");
+    final String letters = words.length >= 2
+        ? "" + words[0].charAt(0) + words[1].charAt(0)
+        : words[0].substring(0, Math.min(2, words[0].length()));
+    return letters.toUpperCase(java.util.Locale.ROOT);
   }
 }

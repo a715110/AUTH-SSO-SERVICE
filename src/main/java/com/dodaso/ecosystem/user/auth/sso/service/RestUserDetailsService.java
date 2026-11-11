@@ -40,7 +40,10 @@ public class RestUserDetailsService implements UserDetailsService {
     UserDTO userDTO = userDTOContainer.getUserDTO();
     // Roles come from the IAMS directory entry (UserDirectoryDTO.roleNames),
     // not from UserDTO, which carries no roles.
-    List<String> roleNames = loadRoleNames(userDTO.getLoginId());
+    final UserDirectoryDTOContainer directory = iamsRestClient.fetchUserDirectory(userDTO.getLoginId());
+    List<String> roleNames = loadRoleNames(userDTO.getLoginId(), directory);
+    final String displayName = directory != null && directory.getUserDirectoryDTO() != null
+        ? directory.getUserDirectoryDTO().getDisplayName() : null;
     List<GrantedAuthority> authorities = toAuthorities(roleNames);
 
     // Decode the password hash if it was Base64 encoded for JSON transport
@@ -48,7 +51,8 @@ public class RestUserDetailsService implements UserDetailsService {
 
     // Keeps the original role names next to the authorities; the token customizer
     // publishes them as the "roles" claim.
-    return new SsoUserDetails(userDTO.getLoginId(), passwordHash, authorities, roleNames);
+    return new SsoUserDetails(userDTO.getLoginId(), passwordHash, authorities, roleNames,
+        displayName);
   }
 
   /**
@@ -56,8 +60,7 @@ public class RestUserDetailsService implements UserDetailsService {
    * entry or the call fails, the user logs in with no roles instead of being
    * locked out, and AppEntry.requiredAuthority simply hides any app that needs one.
    */
-  private List<String> loadRoleNames(String loginId) {
-    UserDirectoryDTOContainer directory = iamsRestClient.fetchUserDirectory(loginId);
+  private List<String> loadRoleNames(String loginId, UserDirectoryDTOContainer directory) {
     if (directory == null || directory.getUserDirectoryDTO() == null
         || directory.getUserDirectoryDTO().getRoleNames() == null) {
       log.warn("No IAMS roles found for {}; granting no authorities", loginId);
