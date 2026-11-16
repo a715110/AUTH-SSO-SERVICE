@@ -41,6 +41,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.RequestCache;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -112,8 +115,13 @@ public class AuthServerConfig {
     httpSecurity
         .csrf(AbstractHttpConfigurer::disable)
         .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        // ADDED 2026-11-16: only real page visits are remembered for the return after login.
+        .requestCache(cache -> cache.requestCache(pageVisitRequestCache()))
         .authorizeHttpRequests(registry -> registry
             .requestMatchers("/login").permitAll()
+            // ADDED 2026-11-16: browser and tool probes such as
+            // /.well-known/appspecific/com.chrome.devtools.json get a plain 404, not a login redirect.
+            .requestMatchers("/.well-known/**").permitAll()
             .requestMatchers("/*.css").permitAll()       // Root-level CSS
             .requestMatchers("/*.ico").permitAll()       // Root-level ICO
             .requestMatchers("/js/**").permitAll()       // All files under /js/
@@ -142,6 +150,34 @@ public class AuthServerConfig {
         );
 
     return httpSecurity.build();
+  }
+
+  /**
+   * ADDED 2026-11-16. The request remembered when an anonymous visitor is sent to the login page, and
+   * replayed after the login. Spring remembers any anonymous GET by default, so a background
+   * request that the browser makes on its own (Chrome DevTools asks for
+   * /.well-known/appspecific/com.chrome.devtools.json, and some browsers ask for icons or manifests)
+   * could replace the page the person really wanted, and after the login they landed on a 404.
+   * Only a GET that asks for an HTML page is remembered, and never a .well-known, error or actuator
+   * address. The OAuth2 authorize request is handled by the authorization server chain, which keeps
+   * Spring's default cache, so the sign-in of the apps is not affected.
+   */
+  private static RequestCache pageVisitRequestCache() {
+    final HttpSessionRequestCache cache = new HttpSessionRequestCache();
+    final RequestMatcher pageVisit = request -> {
+      if (!"GET".equals(request.getMethod())) {
+        return false;
+      }
+      final String path = request.getRequestURI().substring(request.getContextPath().length());
+      if (path.startsWith("/.well-known/") || path.startsWith("/error")
+          || path.startsWith("/actuator/")) {
+        return false;
+      }
+      final String accept = request.getHeader("Accept");
+      return accept != null && accept.contains("text/html");
+    };
+    cache.setRequestMatcher(pageVisit);
+    return cache;
   }
 
   /**
